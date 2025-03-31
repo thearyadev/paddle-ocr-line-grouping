@@ -1,12 +1,18 @@
 from paddleocr import PaddleOCR
-from rich import print
+from paddleocr.ppocr.utils.logging import get_logger
 import sys
 from dataclasses import dataclass
 from typing import Final
+import logging
+import warnings
+
+warnings.filterwarnings("ignore", category=UserWarning, module='paddle.utils.cpp_extension.extension_utils')
 
 [_, imagePath, *otherArgs] = sys.argv
 
-flattenPadding: Final = 2
+flattenPadding: Final = 0
+logger = get_logger()
+logger.setLevel(logging.ERROR)
 
 
 @dataclass
@@ -36,7 +42,7 @@ class Detection:
 
 
 def get_ocr(imagePath):
-    ocr = PaddleOCR(lang="ch")
+    ocr = PaddleOCR(lang="ch", show_log=True)
     result = ocr.ocr(
         img=imagePath,
         det=True,
@@ -59,20 +65,18 @@ def get_ocr(imagePath):
         for line in result[0]
     ]
 
-
-def flatten_intervals(
-    intervals: list[tuple[float, float]],
-) -> list[tuple[float, float]]:
+def flatten_intervals(intervals):
     if not intervals:
         return []
-
     intervals.sort(key=lambda x: x[0])
     merged = [intervals[0]]
     for current in intervals[1:]:
         previous = merged[-1]
         if current[0] <= previous[1]:
-            merged[1] = (previous[0], max(previous[1], current[1]))
+            # If the start of the current interval is within or equal to the end of the previous, extend the interval
+            merged[-1] = (previous[0], max(previous[1], current[1]))
         else:
+            # If there's no overlap, just append the current interval
             merged.append(current)
     return merged
 
@@ -89,12 +93,18 @@ def group_y_ranges(detections: list[Detection]):
                 break
     return {k: v for k, v in groups.items() if v}
 
+def dump_stduout(detections:  dict[tuple[float, float], list[Detection]]):
+    for group in detections.values():
+        print(" ".join([d.label for d in group]))
+
 
 def main() -> int:
+    if (otherArgs):
+        PaddleOCR(lang='ch')
+        return 0
     result = get_ocr(imagePath)
     grouped = group_y_ranges(result)
-    for group in grouped.values():
-        print(" ".join([d.label for d in group]))
+    dump_stduout(grouped)
     return 0
 
 
